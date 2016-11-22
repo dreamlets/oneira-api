@@ -10,7 +10,7 @@ import (
 
 func test(w http.ResponseWriter, r *http.Request){
   testTorch := exec.Command("th", "test_torch.lua")
-  if output, err := testTorch.Output(); err != nil{
+  if output, err := testTorch.Output(); err != nil {
     print(err)
   } else {
    fmt.Fprintf(w, string(output))
