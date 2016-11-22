@@ -5,7 +5,17 @@ import (
   "net/http"
   "strings"
   "log"
+  "os/exec"
 )
+
+func test(w http.ResponseWriter, r *http.Request){
+  testTorch := exec.Command("th", "test_torch.lua")
+  if output, err := testTorch.Output(); err != nil{
+    print(err)
+  } else {
+   fmt.Fprintf(w, string(output))
+  }
+}
 
 func generate(w http.ResponseWriter, r *http.Request){
   //code to generate images and shit
@@ -27,6 +37,7 @@ func sayHelloFoucault(w http.ResponseWriter, r *http.Request){
 func main(){
   http.HandleFunc("/", sayHelloFoucault)
   http.HandleFunc("/generate", generate)
+  http.HandleFunc("/test", test)
   if err := http.ListenAndServe(":9090", nil); err != nil {
     log.Fatal("ListenAndServe: ", err)
   }
