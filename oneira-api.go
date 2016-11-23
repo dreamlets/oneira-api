@@ -27,25 +27,29 @@ func generate(w http.ResponseWriter, r *http.Request){
     if _, err := generated.Output(); err != nil {
         fmt.Fprint(w, "Error. Please try again.")
     } else {
-        if img, err = os.Open("../oneira_art/generations/generation.png"); err != nil {
+        file, err := os.Open("../oneira_art/generations/generation.png") 
+        if err != nil {
             log.Println("unable to open file")
-        }
-        defer img.Close()
-        
+        } 
+        defer file.Close()
         var ImageTemplate string = `<DOCTYPE html>
             <html lang="en"><head></head>
 <body><img src="data:image/jpg;base64,{{.Image}}"></body>`
         
         buffer := new(bytes.Buffer)
-        if err := png.Encode(buffer, *img); err != nil {
+        img, err := png.Decode(file)
+        if err != nil {
             log.Println("unable to encode image.")
+        }
+        if err := png.Encode(buffer, img); err != nil {
+            log.Fatalln("unable to encode image")
         }
         str := base64.StdEncoding.EncodeToString(buffer.Bytes())
         if tmpl, err := template.New("image").Parse(ImageTemplate); err != nil {
             log.Println("unable to parse image template")
         } else {
             data := map[string]interface{}{"Image": str}
-            if err = templ.Execute(w, data); err != nil {
+            if err = tmpl.Execute(w, data); err != nil {
                 log.Println("unable to execute template.")
             }
         }
