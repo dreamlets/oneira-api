@@ -23,14 +23,19 @@ func test(w http.ResponseWriter, r *http.Request){
 }
 
 func generate(w http.ResponseWriter, r *http.Request){
+    //command for Torch model to generate a single image
     generated := exec.Command("th", "../oneira_art/main.lua -i ~/dcgan_vae_torch/checkpoints_for_prod/save_cpu_model.lua -o generations/" )
+    
+    //run command, then send the generated image to client via HTML
     if _, err := generated.Output(); err != nil {
-        fmt.Fprint(w, "Error. Please try again.")
+        fmt.Fprint(w, "unable to open file.")
+        fmt.Fprint(w, err)
     } else {
         file, err := os.Open("../oneira_art/generations/generation.png") 
         if err != nil {
             log.Println("unable to open file")
-        } 
+        }
+        
         defer file.Close()
         var ImageTemplate string = `<DOCTYPE html>
             <html lang="en"><head></head>
