@@ -2,16 +2,20 @@ package main
 
 import (
   "fmt"
-  "bytes"
   "encoding/base64"
-  "os"
   "html/template"
+  "bytes"
+  "os"
   "os/exec"
   "net/http"
   "image/png"
   "strings"
   "log"
 )
+
+type FileStruct struct{
+  Generation string
+}
 
 func test(w http.ResponseWriter, r *http.Request){
   testTorch := exec.Command("th", "test_torch.lua")
@@ -24,23 +28,22 @@ func test(w http.ResponseWriter, r *http.Request){
 
 func generate(w http.ResponseWriter, r *http.Request){
     //command for Torch model to generate a single image
-    generated := exec.Command("th", "../oneira_art/main.lua -i ~/dcgan_vae_torch/checkpoints_for_prod/save_cpu_model.lua -o generations/" )
-    
+    generated := exec.Command("bash", "-c", "th $GOPATH/src/github.com/dreamlets/oneira_art/main.lua -m ~/dcgan_vae_torch/checkpoints/34000_net_G.t7 -o /home/ubuntu/golang/src/github.com/dreamlets/oneira_art/generations/")
+
     //run command, then send the generated image to client via HTML
     if _, err := generated.Output(); err != nil {
         fmt.Fprint(w, "unable to open file.")
         fmt.Fprint(w, err)
     } else {
-        file, err := os.Open("../oneira_art/generations/generation.png") 
+        var ImageTemplate string = `<!DOCTYPE html>
+          <html lang="en"><head></head>
+          <body><img src="data:image/jpg;base64,{{.Generation}}"></body>`
+        file, err := os.Open("../oneira_art/generations/generation.png")
         if err != nil {
             log.Println("unable to open file")
         }
-        
         defer file.Close()
-        var ImageTemplate string = `<DOCTYPE html>
-            <html lang="en"><head></head>
-<body><img src="data:image/jpg;base64,{{.Image}}"></body>`
-        
+
         buffer := new(bytes.Buffer)
         img, err := png.Decode(file)
         if err != nil {
@@ -50,15 +53,15 @@ func generate(w http.ResponseWriter, r *http.Request){
             log.Fatalln("unable to encode image")
         }
         str := base64.StdEncoding.EncodeToString(buffer.Bytes())
-        if tmpl, err := template.New("image").Parse(ImageTemplate); err != nil {
-            log.Println("unable to parse image template")
+        if tmpl, err := template.New("image").Parse(ImageTemplate); err != nil{
+          log.Println("unable to parse image template")
         } else {
-            data := map[string]interface{}{"Image": str}
-            if err = tmpl.Execute(w, data); err != nil {
-                log.Println("unable to execute template.")
-            }
+          data := FileStruct{str}
+          if err = tmpl.Execute(w, data); err != nil{
+             log.Println("unable to execute template.")
+          }
         }
-    }
+      }
 }
 
 func sayHelloFoucault(w http.ResponseWriter, r *http.Request){
