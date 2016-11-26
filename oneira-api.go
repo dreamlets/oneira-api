@@ -6,6 +6,7 @@ import (
     "os/exec"
     "github.com/minio/minio-go"
     "net/http"
+    "github.com/julienschmidt/httprouter"
     "encoding/json"
     "strings"
     "strconv"
@@ -27,7 +28,32 @@ func deleteFiles(){
     }
 }
 
-func generate(w http.ResponseWriter, r *http.Request){
+func listFiles(w http.ResponseWriter, r *http.Request, _ httprouter.Params){
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(200)
+    var urls []string
+    ssl := true
+    s3Client, err := minio.New("s3.amazonaws.com", "AKIAJSGQWMH3ASJDDYVQ", "lO6sLURFrwcfZ9YwcfrFTNpr0hRsSWDtG8MsX41G", ssl)
+    if err != nil {
+        log.Fatalln(err)
+    }
+    //get list of previously generated files
+    doneCh := make(chan struct{})
+    defer close(doneCh)
+    isRecursive := true
+    objectCh := s3Client.ListObjects("oneira-project-generations", "generated", isRecursive, doneCh)
+    //keep count of our previously generated files
+    //TODO: don't do it this way
+    for file := range objectCh {
+        url := "http://s3-us-west-2.amazonaws.com/oneira-project-generations/" + fmt.Sprint(file.Key)
+        urls = append(urls, url)
+    }
+    json.NewEncoder(w).Encode(urls)
+}
+
+func generate(w http.ResponseWriter, r *http.Request, _ httprouter.Params){
+    w.Header().Set("Access-Control-Allow-Origin", "*")
     //clear generated files once we are done
     defer deleteFiles()
     //read JSON body
@@ -47,16 +73,16 @@ func generate(w http.ResponseWriter, r *http.Request){
     w.WriteHeader(200)
     generated := exec.Command("bash", "-c", "th ../../../../../lua/oneira_generator/main.lua -m ../../../../../lua/oneira_generator/CPU_prod.t7 -o ../../../../../lua/oneira_generator/generations/ -s " + fmt.Sprint(size))
     //run command, then send the generated image to client via HTML
-    _, err = generated.Output() 
+    _, err = generated.Output()
     if err != nil {
         log.Fatalln(w, err)
-    } 
+    }
     //connect to our s3 instance via Minio
-    var urls []string 
+    var urls []string
     ssl := true
-    s3Client, err := minio.New("s3.amazonaws.com", "<AWS KEY>", "<AWS SECRET>", ssl)
+    s3Client, err := minio.New("s3.amazonaws.com", "AKIAJSGQWMH3ASJDDYVQ", "lO6sLURFrwcfZ9YwcfrFTNpr0hRsSWDtG8MsX41G", ssl)
     if err != nil {
-        log.Fatalln(err) 
+        log.Fatalln(err)
     }
     //get list of previously generated files
     doneCh := make(chan struct{})
@@ -65,14 +91,14 @@ func generate(w http.ResponseWriter, r *http.Request){
     objectCh := s3Client.ListObjects("oneira-project-generations", "generated", isRecursive, doneCh)
     //keep count of our previously generated files
     //TODO: don't do it this way
-    total_count := 1 
+    total_count := 1
     for range objectCh {
         total_count = total_count + 1
     }
     //get files and send them to our s3 instance
     files, err := ioutil.ReadDir("../../../../../lua/oneira_generator/generations")
     if err != nil {
-        log.Fatalln(err) 
+        log.Fatalln(err)
     }
     for i, file := range files {
         objectName := fmt.Sprintf("generated-%d.png", i + total_count)
@@ -82,13 +108,14 @@ func generate(w http.ResponseWriter, r *http.Request){
         if err != nil {
             log.Fatalln(err)
         }
-        url := "s3-us-west-2.amazonaws.com/oneira-project-generations/" + objectName
+        url := "http://s3-us-west-2.amazonaws.com/oneira-project-generations/" + objectName
         urls = append(urls, url)
     }
-    json.NewEncoder(w).Encode(urls) 
+    json.NewEncoder(w).Encode(urls)
 }
 
-func sayHelloFoucault(w http.ResponseWriter, r *http.Request){
+func sayHelloFoucault(w http.ResponseWriter, r *http.Request, _ httprouter.Params){
+    w.Header().Set("Access-Control-Allow-Origin", "*")
     r.ParseForm()
     fmt.Println(r.Form)
     fmt.Println("path", r.URL.Path)
@@ -102,9 +129,11 @@ func sayHelloFoucault(w http.ResponseWriter, r *http.Request){
 }
 
 func main(){
-    http.HandleFunc("/", sayHelloFoucault)
-    http.HandleFunc("/generate", generate)
-    if err := http.ListenAndServe(":9090", nil); err != nil {
+    router := httprouter.New()
+    router.GET("/", sayHelloFoucault)
+    router.POST("/images/", generate)
+    router.GET("/images/", listFiles)
+    if err := http.ListenAndServe(":9090", router); err != nil {
         log.Fatal("ListenAndServe: ", err)
     }
 }
