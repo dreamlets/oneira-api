@@ -2,66 +2,90 @@ package main
 
 import (
   "fmt"
-  "encoding/base64"
-  "html/template"
-  "bytes"
-  "os"
+  "io/ioutil"
   "os/exec"
+  "github.com/minio/minio-go"
   "net/http"
-  "image/png"
+  "encoding/json"
   "strings"
+  "strconv"
   "log"
 )
 
 type FileStruct struct{
-  Generation string
+    Generation string
 }
 
-func test(w http.ResponseWriter, r *http.Request){
-  testTorch := exec.Command("th", "test_torch.lua")
-  if output, err := testTorch.Output(); err != nil {
-    print(err)
-  } else {
-   fmt.Fprintf(w, string(output))
-  }
+type urlStruct struct{
+    url string
+}
+
+func deleteFiles(){
+   del := exec.Command("bash", "-c", "cd ../../../../../lua/oneira_generator/generations/; rm -rf *.png")
+   if _, err := del.Output(); err != nil {
+      log.Fatalln(err)
+   }
 }
 
 func generate(w http.ResponseWriter, r *http.Request){
-    //command for Torch model to generate a single image
-    generated := exec.Command("bash", "-c", "th $GOPATH/src/github.com/dreamlets/oneira_art/main.lua -m ~/dcgan_vae_torch/checkpoints/34000_net_G.t7 -o /home/ubuntu/golang/src/github.com/dreamlets/oneira_art/generations/")
-
+    //clear generated files once we are done
+    defer deleteFiles()
+    //read JSON body
+    body, err := ioutil.ReadAll(r.Body)
+    if err != nil {
+        fmt.Println(err.Error())
+    }
+    //decode JSON and snag the size parameter
+    var res map[string]interface{}
+    json.Unmarshal([]byte(body),&res)
+    size, err := strconv.Atoi(res["size"].(string))
+    if err != nil {
+        log.Fatalln("size cannot be converted to number")
+    }
+    //set headeer type and send back 200 before generating images
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(200)
+    generated := exec.Command("bash", "-c", "th ~/lua/oneira_generator/main.lua -m ~/lua/oneira_generator/CPU_prod.t7 -o ~/lua/oneira_generator/generations/ -s " + fmt.Sprint(size))
     //run command, then send the generated image to client via HTML
     if _, err := generated.Output(); err != nil {
         fmt.Fprint(w, "unable to open file.")
         fmt.Fprint(w, err)
     } else {
-        var ImageTemplate string = `<!DOCTYPE html>
-          <html lang="en"><head></head>
-          <body><img src="data:image/jpg;base64,{{.Generation}}"></body>`
-        file, err := os.Open("../oneira_art/generations/generation.png")
-        if err != nil {
-            log.Println("unable to open file")
-        }
-        defer file.Close()
-
-        buffer := new(bytes.Buffer)
-        img, err := png.Decode(file)
-        if err != nil {
-            log.Println("unable to encode image.")
-        }
-        if err := png.Encode(buffer, img); err != nil {
-            log.Fatalln("unable to encode image")
-        }
-        str := base64.StdEncoding.EncodeToString(buffer.Bytes())
-        if tmpl, err := template.New("image").Parse(ImageTemplate); err != nil{
-          log.Println("unable to parse image template")
-        } else {
-          data := FileStruct{str}
-          if err = tmpl.Execute(w, data); err != nil{
-             log.Println("unable to execute template.")
-          }
-        }
-      }
+        ssl := true
+	_, err := minio.New("s3.amazonaws.com", "AKIAJSGQWMH3ASJDDYVQ", "lO6sLURFrwcfZ9YwcfrFTNpr0hRsSWDtG8MsX41G", ssl)
+	if err != nil {
+	    fmt.Fprint(w, err)
+	} else {
+            var urls []string 
+	    files, err := ioutil.ReadDir("../../../../../lua/oneira_generator/generations")
+            ssl := true
+	    s3Client, err := minio.New("s3.amazonaws.com", "AKIAJSGQWMH3ASJDDYVQ", "lO6sLURFrwcfZ9YwcfrFTNpr0hRsSWDtG8MsX41G", ssl)
+            if err != nil {
+                fmt.Println(err) 
+            }
+            doneCh := make(chan struct{})
+            defer close(doneCh)
+            
+            total_count := 1 
+            isRecursive := true
+            objectCh := s3Client.ListObjects("oneira-project-generations", "generated", isRecursive, doneCh)
+            for range objectCh {
+                total_count = total_count + 1
+            }
+            for i, file := range files {
+                objectName := fmt.Sprintf("generated-%d.png", i + total_count)
+	        filePath := "../../../../../lua/oneira_generator/generations/" + file.Name()
+	        contentType := "image/png"
+	        _, err := s3Client.FPutObject("oneira-project-generations", objectName, filePath, contentType)
+               if err != nil {
+	            log.Fatalln(err)
+	       }
+               url := "s3-us-west-2.amazonaws.com/oneira-project-generations/" + objectName
+               urls = append(urls, url)
+           }
+           json.NewEncoder(w).Encode(urls) 
+       }
+    }
 }
 
 func sayHelloFoucault(w http.ResponseWriter, r *http.Request){
@@ -80,7 +104,6 @@ func sayHelloFoucault(w http.ResponseWriter, r *http.Request){
 func main(){
   http.HandleFunc("/", sayHelloFoucault)
   http.HandleFunc("/generate", generate)
-  http.HandleFunc("/test", test)
   if err := http.ListenAndServe(":9090", nil); err != nil {
     log.Fatal("ListenAndServe: ", err)
   }
