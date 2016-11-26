@@ -21,9 +21,9 @@ type urlStruct struct{
 }
 
 func deleteFiles(){
-   del := exec.Command("bash", "-c", "cd ../../../../../lua/oneira_generator/generations/; rm -rf *.png")
+   del := exec.Command("bash", "-c", "cd ~/lua/oneira_generator/generations/; rm -rf *.png")
    if _, err := del.Output(); err != nil {
-      log.Fatalln(err)
+	   log.Fatalln(err)
    }
 }
 
@@ -47,45 +47,45 @@ func generate(w http.ResponseWriter, r *http.Request){
     w.WriteHeader(200)
     generated := exec.Command("bash", "-c", "th ~/lua/oneira_generator/main.lua -m ~/lua/oneira_generator/CPU_prod.t7 -o ~/lua/oneira_generator/generations/ -s " + fmt.Sprint(size))
     //run command, then send the generated image to client via HTML
-    if _, err := generated.Output(); err != nil {
-        fmt.Fprint(w, "unable to open file.")
-        fmt.Fprint(w, err)
-    } else {
-        ssl := true
-	_, err := minio.New("s3.amazonaws.com", "AKIAJSGQWMH3ASJDDYVQ", "lO6sLURFrwcfZ9YwcfrFTNpr0hRsSWDtG8MsX41G", ssl)
+    _, err := generated.Output() 
+    if err != nil {
+        log.Fatalln(w, err)
+    } 
+	//connect to our s3 instance via Minio
+	var urls []string 
+	ssl := true
+	s3Client, err := minio.New("s3.amazonaws.com", "AKIAJSGQWMH3ASJDDYVQ", "lO6sLURFrwcfZ9YwcfrFTNpr0hRsSWDtG8MsX41G", ssl)
 	if err != nil {
-	    fmt.Fprint(w, err)
-	} else {
-            var urls []string 
-	    files, err := ioutil.ReadDir("../../../../../lua/oneira_generator/generations")
-            ssl := true
-	    s3Client, err := minio.New("s3.amazonaws.com", "AKIAJSGQWMH3ASJDDYVQ", "lO6sLURFrwcfZ9YwcfrFTNpr0hRsSWDtG8MsX41G", ssl)
-            if err != nil {
-                fmt.Println(err) 
-            }
-            doneCh := make(chan struct{})
-            defer close(doneCh)
-            
-            total_count := 1 
-            isRecursive := true
-            objectCh := s3Client.ListObjects("oneira-project-generations", "generated", isRecursive, doneCh)
-            for range objectCh {
-                total_count = total_count + 1
-            }
-            for i, file := range files {
-                objectName := fmt.Sprintf("generated-%d.png", i + total_count)
-	        filePath := "../../../../../lua/oneira_generator/generations/" + file.Name()
-	        contentType := "image/png"
-	        _, err := s3Client.FPutObject("oneira-project-generations", objectName, filePath, contentType)
-               if err != nil {
-	            log.Fatalln(err)
-	       }
-               url := "s3-us-west-2.amazonaws.com/oneira-project-generations/" + objectName
-               urls = append(urls, url)
-           }
-           json.NewEncoder(w).Encode(urls) 
-       }
-    }
+		log.Fatalln(err) 
+	}
+	//get list of previously generated files
+	doneCh := make(chan struct{})
+	defer close(doneCh)
+	isRecursive := true
+	objectCh := s3Client.ListObjects("oneira-project-generations", "generated", isRecursive, doneCh)
+	//keep count of our previously generated files
+	//TODO: don't do it this way
+	total_count := 1 
+	for range objectCh {
+		total_count = total_count + 1
+	}
+	//get files and send them to our s3 instance
+    files, err := ioutil.ReadDir("~/lua/oneira_generator/generations")
+	if err != nil {
+		log.Fatalln(err) 
+	}
+	for i, file := range files {
+		objectName := fmt.Sprintf("generated-%d.png", i + total_count)
+		filePath := "../../../../../lua/oneira_generator/generations/" + file.Name()
+		contentType := "image/png"
+		_, err := s3Client.FPutObject("oneira-project-generations", objectName, filePath, contentType)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	 	url := "s3-us-west-2.amazonaws.com/oneira-project-generations/" + objectName
+	 	urls = append(urls, url)
+ 	}
+	json.NewEncoder(w).Encode(urls) 
 }
 
 func sayHelloFoucault(w http.ResponseWriter, r *http.Request){
