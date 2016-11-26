@@ -1,30 +1,30 @@
 package main
 
 import (
-  "fmt"
-  "io/ioutil"
-  "os/exec"
-  "github.com/minio/minio-go"
-  "net/http"
-  "encoding/json"
-  "strings"
-  "strconv"
-  "log"
+	"fmt"
+	"io/ioutil"
+	"os/exec"
+	"github.com/minio/minio-go"
+	"net/http"
+	"encoding/json"
+	"strings"
+	"strconv"
+	"log"
 )
 
 type FileStruct struct{
-    Generation string
+	Generation string
 }
 
 type urlStruct struct{
-    url string
+	url string
 }
 
 func deleteFiles(){
-   del := exec.Command("bash", "-c", "cd ../../../../../lua/oneira_generator/generations/; rm -rf *.png")
-   if _, err := del.Output(); err != nil {
+	del := exec.Command("bash", "-c", "cd ../../../../../lua/oneira_generator/generations/; rm -rf *.png")
+	if _, err := del.Output(); err != nil {
 	   log.Fatalln(err)
-   }
+	}
 }
 
 func generate(w http.ResponseWriter, r *http.Request){
