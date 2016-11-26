@@ -54,7 +54,7 @@ func generate(w http.ResponseWriter, r *http.Request){
     //connect to our s3 instance via Minio
     var urls []string 
     ssl := true
-    s3Client, err := minio.New("s3.amazonaws.com", "AKIAJSGQWMH3ASJDDYVQ", "lO6sLURFrwcfZ9YwcfrFTNpr0hRsSWDtG8MsX41G", ssl)
+    s3Client, err := minio.New("s3.amazonaws.com", "<AWS KEY>", "<AWS SECRET>", ssl)
     if err != nil {
         log.Fatalln(err) 
     }
